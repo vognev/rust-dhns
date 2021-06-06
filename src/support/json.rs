@@ -1,5 +1,6 @@
 use hex::FromHex;
 use std::collections::HashMap;
+use std::fmt;
 
 #[derive(Debug)]
 pub enum JsVal {
@@ -16,6 +17,15 @@ pub enum JsVal {
 pub enum JsErr {
     InvalidJson(String),
     ParseError(String),
+}
+
+impl fmt::Display for JsErr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            JsErr::InvalidJson(s) => write!(f, "JsErr::InvalidJson {}", s),
+            JsErr::ParseError(s) => write!(f, "JsErr::ParseError {}", s),
+        }
+    }
 }
 
 pub struct Parser<'a> {
@@ -47,7 +57,7 @@ impl<'a> Parser<'a> {
         &self.data[self.idx - n..self.idx]
     }
 
-    fn take(&mut self, n: usize) {
+    fn skip(&mut self, n: usize) {
         self.idx += n
     }
 
@@ -57,7 +67,7 @@ impl<'a> Parser<'a> {
                 && self.data[self.idx + 2] as char == 'u'
                 && self.data[self.idx + 3] as char == 'e'
             {
-                self.take(4);
+                self.skip(4);
                 return Ok(JsVal::Bool(true));
             }
         }
@@ -68,7 +78,7 @@ impl<'a> Parser<'a> {
                 && self.data[self.idx + 3] as char == 's'
                 && self.data[self.idx + 4] as char == 'e'
             {
-                self.take(5);
+                self.skip(5);
                 return Ok(JsVal::Bool(false));
             }
         }
@@ -78,7 +88,7 @@ impl<'a> Parser<'a> {
                 && (self.data[self.idx + 2]) as char == 'l'
                 && (self.data[self.idx + 3]) as char == 'l'
             {
-                self.take(4);
+                self.skip(4);
                 return Ok(JsVal::Null);
             }
         }
@@ -91,7 +101,7 @@ impl<'a> Parser<'a> {
 
         if self.char() == '-' {
             number.push('-');
-            self.take(1);
+            self.skip(1);
         }
 
         while !self.eof() {
@@ -100,7 +110,7 @@ impl<'a> Parser<'a> {
             match c {
                 '0'..='9' => {
                     number.push(c);
-                    self.take(1)
+                    self.skip(1)
                 }
                 _ => {
                     break;
@@ -110,7 +120,7 @@ impl<'a> Parser<'a> {
 
         if !self.eof() && self.char() == '.' {
             number.push('.');
-            self.take(1);
+            self.skip(1);
 
             while !self.eof() {
                 let c = self.char();
@@ -118,7 +128,7 @@ impl<'a> Parser<'a> {
                 match c {
                     '0'..='9' => {
                         number.push(c);
-                        self.take(1)
+                        self.skip(1)
                     }
                     _ => break,
                 }
@@ -138,46 +148,46 @@ impl<'a> Parser<'a> {
 
     fn parse_string(&mut self) -> JsResult {
         let mut string = String::new();
-        self.take(1);
+        self.skip(1);
 
         while !self.eof() {
             match self.char() {
                 '"' => {
-                    self.take(1);
+                    self.skip(1);
                     return Ok(JsVal::String(string));
                 }
 
                 '\\' if self.has(1) => {
-                    self.take(1);
+                    self.skip(1);
 
                     match self.char() {
                         '"' | '/' | '\\' => {
                             string.push(self.char());
-                            self.take(1)
+                            self.skip(1)
                         }
                         'b' => {
                             string.push(08 as char);
-                            self.take(1)
+                            self.skip(1)
                         }
                         'f' => {
                             string.push(12 as char);
-                            self.take(1)
+                            self.skip(1)
                         }
                         'r' => {
                             string.push('\r');
-                            self.take(1)
+                            self.skip(1)
                         }
                         'n' => {
                             string.push('\n');
-                            self.take(1)
+                            self.skip(1)
                         }
                         't' => {
                             string.push('\t');
-                            self.take(1)
+                            self.skip(1)
                         }
 
                         'u' if self.has(5) => {
-                            self.take(1);
+                            self.skip(1);
 
                             let rune = self.slice(4);
 
@@ -206,7 +216,7 @@ impl<'a> Parser<'a> {
 
                 _ => {
                     string.push(self.char());
-                    self.take(1)
+                    self.skip(1)
                 }
             }
         }
@@ -218,24 +228,21 @@ impl<'a> Parser<'a> {
         while !self.eof() {
             match self.char() {
                 '\t' | '\r' | '\n' | ' ' => {
-                    self.take(1);
+                    self.skip(1);
                 }
 
                 '[' => {
-                    self.take(1);
+                    self.skip(1);
                     let mut ary: Vec<JsVal> = vec![];
 
                     while !self.eof() {
                         match self.char() {
                             ']' => {
-                                self.take(1);
+                                self.skip(1);
                                 return Ok(JsVal::Array(ary));
                             }
-                            ',' => {
-                                self.take(1);
-                            }
-                            '\t' | '\r' | '\n' | ' ' => {
-                                self.take(1);
+                            ',' | '\t' | '\r' | '\n' | ' ' => {
+                                self.skip(1);
                             }
                             _ => ary.push(self.parse_any()?),
                         }
@@ -245,32 +252,27 @@ impl<'a> Parser<'a> {
                 }
 
                 '{' => {
-                    self.take(1);
+                    self.skip(1);
                     let mut obj: HashMap<String, JsVal> = HashMap::new();
                     let mut label: Option<String> = None;
 
                     while !self.eof() {
                         match self.char() {
                             '}' => {
-                                self.take(1);
+                                self.skip(1);
                                 return Ok(JsVal::Object(obj));
                             }
-                            ',' => {
-                                self.take(1);
+                            '\t' | '\r' | '\n' | ' ' | ',' => {
+                                self.skip(1);
                             }
                             ':' => match label {
                                 Some(_) => {
-                                    self.take(1);
+                                    self.skip(1);
                                 }
                                 None => {
-                                    return Err(JsErr::InvalidJson(String::from(
-                                        "Unexpected semicolon",
-                                    )));
+                                    return Err(JsErr::InvalidJson(String::from("Unexpected semicolon", )));
                                 }
                             },
-                            '\t' | '\r' | '\n' | ' ' => {
-                                self.take(1);
-                            }
                             _ => {
                                 let val = self.parse_any()?;
                                 match label {
@@ -286,8 +288,7 @@ impl<'a> Parser<'a> {
                                         
                                     }
                                     Some(ref l) => {
-                                        obj.insert(l.clone(), val);
-                                        label = None;
+                                        obj.insert(l.clone(), val); label = None;
                                     }
                                 }
                             },
@@ -311,8 +312,7 @@ impl<'a> Parser<'a> {
 
                 _ => {
                     return Err(JsErr::InvalidJson(format!(
-                        "Invalid token: {}",
-                        self.char()
+                        "Invalid token: {}", self.char()
                     )));
                 }
             }
@@ -327,6 +327,7 @@ impl<'a> Parser<'a> {
     }
 }
 
+#[cfg(test)]
 mod test {
     use super::*;
 
@@ -418,7 +419,7 @@ mod test {
                 _ => assert!(false, "Unexpected JsVal"),
             },
             Err(e) => {
-                assert!(false, e);
+                assert!(false, "{}", e);
             }
         }
     }
@@ -433,7 +434,7 @@ mod test {
                 _ => assert!(false, "Unexpected JsVal"),
             },
             Err(e) => {
-                assert!(false, e);
+                assert!(false, "{}", e);
             }
         }
     }
@@ -441,8 +442,8 @@ mod test {
     #[test]
     fn test_misc_array() {
         let data = "[[]]".as_bytes().to_vec();
-        if let Err(_) = Parser::parse(data) {
-            assert!(false);
+        if let Err(e) = Parser::parse(data) {
+            assert!(false, "{}", e);
         }
     }
 
@@ -472,7 +473,7 @@ mod test {
                 _ => assert!(false, "Unexpected JsVal"),
             },
             Err(e) => {
-                assert!(false, e);
+                assert!(false, "{}", e);
             }
         }
     }
@@ -487,7 +488,7 @@ mod test {
                 _ => assert!(false, "Unexpected JsVal"),
             },
             Err(e) => {
-                assert!(false, e);
+                assert!(false, "{}", e);
             }
         }
     }
@@ -498,7 +499,7 @@ mod test {
 
         match Parser::parse(json) {
             Err(e) => {
-                assert!(false, e);
+                assert!(false, "{}", e);
             }
             _ => {}
         }
@@ -510,7 +511,7 @@ mod test {
         let data = Parser::parse(json);
 
         if let Err(e) = data {
-            dbg!(e); assert!(false);
+            assert!(false, "{}", e);
         } 
     }
 }

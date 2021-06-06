@@ -23,7 +23,7 @@ impl HeadersBag {
                 }
             }
         } else {
-            // todo
+            unimplemented!()
         }
     }
 

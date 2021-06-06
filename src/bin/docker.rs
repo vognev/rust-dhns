@@ -10,9 +10,7 @@ fn main() {
 
     let response = request.exec().unwrap();
 
-    print!("{}", response);
-
     let json = Parser::parse(Vec::from(response));
 
-    dbg!(json);
+    dbg!(json.unwrap());
 }
